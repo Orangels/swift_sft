@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 swift export --ckpt_dir output/qwen1half-7b-chat/v1-20240418-192022/checkpoint-92 --quant_bits 4 --quant_method awq --merge_lora true
