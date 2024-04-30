@@ -5,7 +5,7 @@ from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
     get_template, inference_vllm
 )
-ckpt_dir = '/home/zwmx/xm_dev/ls_project/llm_sft_output/qwen1half-14b-chat/v7-20240423-125134/checkpoint-2830-merged'
+ckpt_dir = '/home/zwmx/xm_dev/ls_project/swift/scripts/ls/output/qwen1half-14b-chat/v8-20240427-133147/checkpoint-93-merged'
 model_type = ModelType.qwen1half_14b_chat
 #llm_engine = get_vllm_engine(model_type)
 llm_engine = get_vllm_engine(model_type, model_id_or_path=ckpt_dir, max_model_len=9000)
@@ -21,6 +21,8 @@ for request, resp in zip(request_list, resp_list):
     print(f"response: {resp['response']}")
 
 history1 = resp_list[1]['history']
+# [['浙江的省会在哪？', '浙江省的省会是杭州。']]
+print(history1)
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
 resp_list = inference_vllm(llm_engine, template, request_list)
 for request, resp in zip(request_list, resp_list):

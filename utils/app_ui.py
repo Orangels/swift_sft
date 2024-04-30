@@ -18,6 +18,8 @@ History = List[Union[Tuple[str, str], List[str]]]
 
 def gradio_chat_demo() -> None:
     ckpt_dir = '/home/zwmx/xm_dev/ls_project/swift/scripts/ls/output/qwen1half-14b-chat/v8-20240427-133147/checkpoint-93-merged'
+    # ckpt_dir = '/home/zwmx/xm_dev/ls_project/models/A100_80/checkpoint-3600-saved'
+    # ckpt_dir = '/home/zwmx/xm_dev/ls_project/llm_sft_output/qwen1half-14b-chat/v15-20240427-155823/checkpoint-3800-merged'
     # ckpt_dir = '/home/zwmx/xm_dev/ls_project/models/qwen-14b'
     model_type = ModelType.qwen1half_14b_chat
     # llm_engine = get_vllm_engine(model_type)
@@ -33,13 +35,18 @@ def gradio_chat_demo() -> None:
     def clear_session() -> History:
         return []
 
-
-    def model_chat(query: str, total_history: str) -> Iterator[Tuple[str, History]]:
+    def model_chat(query: str, total_history: History) -> Iterator[Tuple[str, History]]:
         try:
+
+            if len(total_history) > 5:
+                total_history = total_history[-5:]
+
+            print(total_history)
             pattern_int = r'(\d+条)'
             pattern = r"([一二三四五六七八九十百千万零壹贰叁肆伍陆柒捌玖拾佰仟萬]+条)"
 
-            match_int_list = list(re.finditer(pattern_int, query))
+            query_rag = query.replace(" ", "")
+            match_int_list = list(re.finditer(pattern_int, query_rag))
             if match_int_list:
                 for i in range(len(match_int_list)):
                     match_int = match_int_list[i]
@@ -48,10 +55,10 @@ def gradio_chat_demo() -> None:
                     an_number = match_int.group()
                     print(an_number)
                     number = an2cn(an_number[:-1])
-                    query = query[:start_index] + number + query[end_index - 1:]
-                    print(query)
+                    query_rag = query_rag[:start_index] + number + query_rag[end_index - 1:]
+                    print(query_rag)
 
-            match = re.search(pattern, query)
+            match = re.search(pattern, query_rag)
 
             result = ''
             str_front = ''
@@ -65,15 +72,15 @@ def gradio_chat_demo() -> None:
                 end_index = match.end()
                 number = match.group()
                 print(number)
-                # str_front = query[:start_index - 1]
-                str_front = query[:start_index]
-                if end_index < len(query):
-                    str_behand = query[end_index:]
+                # str_front = query_rag[:start_index - 1]
+                str_front = query_rag[:start_index]
+                if end_index < len(query_rag):
+                    str_behand = query_rag[end_index:]
                 print(f'str_front -- {str_front}')
                 print(f'str_behand -- {str_behand}')
 
                 pattern_law_str = r"(法)"
-                # match_law_str = re.search(pattern_law_str, query)
+                # match_law_str = re.search(pattern_law_str, query_rag)
                 match_law_str_list = list(
                     re.finditer(pattern_law_str, str_front))
 
@@ -90,100 +97,159 @@ def gradio_chat_demo() -> None:
                 else:
                     match_law_str_list = list(
                         re.finditer(pattern_law_str, str_behand))
-                    match_law_str = match_law_str_list[-1]
-                    start_index = match_law_str.start()
-                    end_index = match_law_str.end()
-                    law_char = match_law_str.group()
-                    query_str_mode = 1
-                    if end_index < len(str_behand) + 1:
-                        law_str = str_behand[start_index - 1:start_index + 1]
-                    else:
-                        law_str = str_behand[start_index - 1:]
-                    print(
-                        f"behand 找到匹配：{number}，起始位置：{start_index}，结束位置：{end_index}")
-                    print(law_str)
+                    if match_law_str_list:
+                        match_law_str = match_law_str_list[-1]
+                        start_index = match_law_str.start()
+                        end_index = match_law_str.end()
+                        law_char = match_law_str.group()
+                        query_str_mode = 1
+                        if end_index < len(str_behand) + 1:
+                            law_str = str_behand[start_index - 1:start_index + 1]
+                        else:
+                            law_str = str_behand[start_index - 1:]
+                        print(
+                            f"behand 找到匹配：{number}，起始位置：{start_index}，结束位置：{end_index}")
+                        print(law_str)
 
-                # sql query
+                # sql query_rag
                 # cursor.execute("SELECT * FROM legal_provisions WHERE content LIKE ?",
                 #                (f'第{number}%',))
                 # rows = cursor.fetchall()
-                conn = sqlite3.connect('../sqlite/law.db')
-                cursor = conn.cursor()
 
-                cursor.execute(
-                    "SELECT * FROM legal_provisions WHERE type LIKE ? AND content LIKE ?",
-                    (f'%{law_str}%', f'第{number}%'))
+                if law_str != '':
 
-                rows = cursor.fetchall()
+                    conn = sqlite3.connect('../sqlite/law.db')
+                    cursor = conn.cursor()
 
-                if len(rows) <= 0:
-                    print(f'type 不包涵{number}的数据')
-                    num_index_n = 3
-                    if query_str_mode == 0:
-                        if start_index <= num_index_n:
-                            law_str = str_front[:start_index + 1]
-                        else:
-                            law_str = str_front[
-                                      start_index - num_index_n - 1:start_index + 1]
-                    else:
-                        if end_index < len(str_behand) + 1:
-                            law_str = str_behand[
-                                      start_index - num_index_n:start_index + 1]
-                        else:
-                            law_str = str_behand[start_index - num_index_n:]
                     cursor.execute(
-                        "SELECT * FROM legal_provisions WHERE title LIKE ? AND content LIKE ?",
+                        "SELECT * FROM legal_provisions WHERE type LIKE ? AND content LIKE ?",
                         (f'%{law_str}%', f'第{number}%'))
+
                     rows = cursor.fetchall()
 
-                conn.close()
+                    if len(rows) <= 0:
+                        print(f'type 不包涵{number}的数据')
+                        num_index_n = 3
+                        if query_str_mode == 0:
+                            if start_index <= num_index_n:
+                                law_str = str_front[:start_index + 1]
+                            else:
+                                law_str = str_front[
+                                          start_index - num_index_n - 1:start_index + 1]
+                        else:
+                            if end_index < len(str_behand) + 1:
+                                law_str = str_behand[
+                                          start_index - num_index_n:start_index + 1]
+                            else:
+                                law_str = str_behand[start_index - num_index_n:]
+                        cursor.execute(
+                            "SELECT * FROM legal_provisions WHERE title LIKE ? AND content LIKE ?",
+                            (f'%{law_str}%', f'第{number}%'))
+                        rows = cursor.fetchall()
 
-                # 打印查询结果
-                qa_prompt_tmpl_str = (
-                    "上下文信息如下。\n"
-                    "---------------------\n"
-                    "{context_str}\n"
-                    "---------------------\n"
-                    "请根据上下文信息而不是先验知识来回答以下的查询。"
-                    "作为一个法律人工智能助手，你的回答要尽可能严谨。\n"
-                    "Query: {query_str}\n"
-                    "Answer: "
-                )
-                context = ''
-                print(len(rows))
-                for idx, row in enumerate(rows):
-                    if idx > 5:
-                        break
-                    print(row)
-                    context += f'{row[4]}\n'
+                    conn.close()
 
-                    # 打印每个字段的数据
-                    # print("Field 1:", field1)
-                    # print("Field 2:", field2)
-                    # print("Field 3:", field3)
-                    # print("Field 3:", field4)
-                    # print("Field 3:", field5)
-                qa_prompt_tmpl = qa_prompt_tmpl_str.format(context_str=context,
-                                                           query_str=query)
-                print(qa_prompt_tmpl)
-                print('************')
-                request_list = [{'query': qa_prompt_tmpl}]
-                resp_list = inference_vllm(llm_engine, template, request_list)
-                history = [(query, resp_list[0]['response'])]
-                total_history = total_history + history
-                yield '', total_history
+                    # 打印查询结果
+                    # qa_prompt_tmpl_str = (
+                    #     "上下文信息如下。\n"
+                    #     "---------------------\n"
+                    #     "{context_str}\n"
+                    #     "---------------------\n"
+                    #     "请根据上下文信息而不是先验知识来回答以下的查询。"
+                    #     "作为一个法律人工智能助手，你的回答要尽可能严谨。\n"
+                    #     "Query: {query_str}\n"
+                    #     "Answer: "
+                    # )
+                    qa_prompt_tmpl_str = (
+                        "上下文信息包涵以下。\n"
+                        "---------------------\n"
+                        "{context_str}\n"
+                        "---------------------\n"
+                        "请根据上下文信息而和先验知识来回答以下的查询。"
+                        "作为一个法律人工智能助手，你的回答要尽可能严谨。\n"
+                        "Query: {query_str}\n"
+                        "Answer: "
+                    )
+                    context = ''
+                    print(len(rows))
+                    for idx, row in enumerate(rows):
+                        if idx > 5:
+                            break
+                        print(row)
+                        context += f'{row[4]}\n'
+
+                        # 打印每个字段的数据
+                        # print("Field 1:", field1)
+                        # print("Field 2:", field2)
+                        # print("Field 3:", field3)
+                        # print("Field 3:", field4)
+                        # print("Field 3:", field5)
+                    qa_prompt_tmpl = qa_prompt_tmpl_str.format(context_str=context,
+                                                               query_str=query_rag)
+                    print(qa_prompt_tmpl)
+                    print('************')
+
+                    # demo
+                    # history1 = resp_list[1]['history']
+                    # request_list = [
+                    #     {'query': '这有什么好吃的', 'history': history1}]
+
+                    request_list = [{'query': qa_prompt_tmpl}]
+
+                    if len(total_history) > 0:
+                        request_list = [
+                            {'query': qa_prompt_tmpl, 'history': total_history}
+                        ]
+
+                    resp_list = inference_vllm(llm_engine, template, request_list)
+
+                    history = [(query, resp_list[0]['response'])]
+                    # print('3333333')
+                    # print(history)
+                    total_history = total_history + history
+                    # print('111111')
+                    # print(history)
+                    # print('2222222')
+                    # print(total_history)
+                    yield ('', total_history)
                 # return '', resp_list[0]['history']
                 # for request, resp in zip(request_list, resp_list):
-                #     # print(f"query: {request['query']}")
+                #     # print(f"query: {request['query_rag']}")
                 #     print('----------------')
                 #     print(f"response: {resp['response']}")
                 #     return resp['response']
+                else:
+                    request_list = [{'query': query_rag}]
+                    # print('!!!!!!!!!!!')
+                    # print(total_history)
+                    if len(total_history) > 0:
+                        request_list = [
+                            {'query': query_rag, 'history': total_history}
+                        ]
+                        # print(total_history[-1])
+
+                    resp_list = inference_vllm(llm_engine, template,
+                                               request_list)
+                    # history = resp_list[0]['history']
+                    history = [(query, resp_list[0]['response'])]
+                    total_history = total_history + history
+                    yield ('', total_history)
+
             else:
-                request_list = [{'query': query}]
+                request_list = [{'query': query_rag}]
+                # print('!!!!!!!!!!!')
+                # print(total_history)
+                if len(total_history) > 0:
+                    request_list = [
+                        {'query': query_rag, 'history': total_history}
+                    ]
+                    print(total_history[-1])
+
                 resp_list = inference_vllm(llm_engine, template, request_list)
-                history = resp_list[0]['history']
+                # history = resp_list[0]['history']
+                history = [(query, resp_list[0]['response'])]
                 total_history = total_history + history
-                yield '', total_history
+                yield ('', total_history)
                 # return '', resp_list[0]['history']
                 # for request, resp in zip(request_list, resp_list):
                 #     # print(f"query: {request['query']}")
@@ -197,10 +263,18 @@ def gradio_chat_demo() -> None:
             print('***********')
 
             request_list = [{'query': query}]
+
+            if len(total_history) > 0:
+                request_list = [
+                    {'query': query, 'history': total_history}
+                ]
+                # print(total_history[-1])
+
             resp_list = inference_vllm(llm_engine, template, request_list)
-            history = resp_list[0]['history']
+            # history = resp_list[0]['history']
+            history = [(query, resp_list[0]['response'])]
             total_history = total_history + history
-            yield '', total_history
+            yield ('', total_history)
 
 
     with gr.Blocks() as demo:
